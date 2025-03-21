@@ -1,10 +1,11 @@
 ﻿// Client
+using Sender;
 using System.Net.Sockets;
 
 await Task.Delay(3000);
 
-Connect("127.0.0.1", "Arun kumar is awesome.");
-
+// Connect("127.0.0.1", "Arun kumar is awesome.");
+await Client.Run();
 static void Connect(String server, String message)
 {
     try

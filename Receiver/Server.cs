@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
-
+record Metadata(long filesize, string filename);
 internal static class Server
 {
     internal static async Task Run()
@@ -24,17 +24,42 @@ internal static class Server
 
     internal static async Task ProcessClient4(TcpClient client)
     {
-        // v3 
-        NetworkStream stream = client.GetStream();
+        // v4: v3 code modified to send image and its metadata. woking correctly
+        using NetworkStream channel = client.GetStream();
 
-        FileStream inputFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
-        StreamReader streamReader = new(stream, Encoding.UTF8);
-        string emo = streamReader.ReadLine();
-        Console.WriteLine(emo);
-        await stream.CopyToAsync(inputFile);
+        using FileStream imageFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
+        using BinaryWriter fileWriter = new(imageFile);
+        using BinaryReader channelReader = new(channel);
+        string metadata = channelReader.ReadString();
+        Metadata metadataObj = JsonSerializer.Deserialize<Metadata>(metadata) ?? throw new Exception();
+        Console.WriteLine(metadata);
+        for (int i = 0; i < metadataObj.filesize; i++)
+        {
+            byte byteRead = channelReader.ReadByte();
+            fileWriter.Write(byteRead);
+        }
         client.Close();
+        await Task.Delay(100); 
     }
+
     internal static async Task ProcessClient3(TcpClient client)
+    {
+        // v3 : use binary writer to write image to stream. working correctly.
+        using NetworkStream channel = client.GetStream();
+
+        using FileStream imageFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
+        using BinaryWriter fileWriter = new(imageFile);
+        using BinaryReader channelReader = new(channel);
+        long length = channelReader.ReadInt64();
+        for (int i = 0; i < length; i++)
+        {
+            byte byteRead = channelReader.ReadByte();
+            fileWriter.Write(byteRead);
+        }
+        client.Close();
+        await Task.Delay(100);
+    }
+    internal static async Task ProcessClient2_2(TcpClient client)
     {
         // v2.2 hard coded. working correctly
         NetworkStream stream = client.GetStream();
@@ -45,7 +70,7 @@ internal static class Server
         client.Close();
     }
 
-    internal static async Task ProcessClient2(TcpClient client)
+    internal static async Task ProcessClient2_1(TcpClient client)
     {
         // v2.1 hard coded. working correctly.
         NetworkStream stream = client.GetStream();

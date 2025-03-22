@@ -9,17 +9,40 @@ internal static class Client
 {
     internal static async Task Run()
     {
-        // v3
+        // v4: v3 code modified to send image and its metadata. working
         using TcpClient client = new TcpClient("127.0.0.1", 13000);
-        var channel = client.GetStream();
+        using NetworkStream channel = client.GetStream();
+        using BinaryWriter channelWriter = new(channel);
 
         using FileStream fileStream = new(Constants.FilePath, FileMode.Open);
+        using BinaryReader fileReader = new(fileStream);
+        string filename = Path.GetFileName(Constants.FilePath);
+        var metadataObj = new { filename, filesize = fileStream.Length };
+        string metadata = JsonSerializer.Serialize(metadataObj);
+        channelWriter.Write(metadata);
+        for (int i = 0; i < fileStream.Length; i++)
+        {
+            byte readByte = fileReader.ReadByte();
+            channelWriter.Write(readByte);
+        }
+        await Task.Delay(1000);
+    }
+    internal static async Task RunK()
+    {
+        // v3 : use binary writer to write image to stream. working correctly. (no metadata)
+        using TcpClient client = new TcpClient("127.0.0.1", 13000);
+        using NetworkStream channel = client.GetStream();
+        using BinaryWriter channelWriter = new(channel);
 
-        string emo = "🙃";
-        StreamWriter streamWriter = new(channel,Encoding.UTF8);
-        streamWriter.WriteLine(emo);
-        streamWriter.Flush();
-        await fileStream.CopyToAsync(channel);
+        using FileStream fileStream = new(Constants.FilePath, FileMode.Open);
+        using BinaryReader fileReader = new(fileStream);
+        channelWriter.Write(fileStream.Length);
+        for (int i = 0; i < fileStream.Length; i++)
+        {
+            byte readByte = fileReader.ReadByte();
+            channelWriter.Write(readByte);
+        }
+        await Task.Delay(1000);
     }
     internal static async Task RunX()
     {

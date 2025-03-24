@@ -2,69 +2,107 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text;
+using Common;
 
-await Server.Run(); return;
+await Run();
 
-TcpListener server = null;
-try
+static async Task Run()
 {
-    // Set the TcpListener on port 13000.
-    Int32 port = 13000;
     IPAddress localAddr = IPAddress.Parse("127.0.0.1");
-
-    // TcpListener server = new TcpListener(port);
-    server = new TcpListener(localAddr, port);
-
-    // Start listening for client requests.
+    int port = 13000;
+    TcpListener server = new(localAddr, port);
     server.Start();
-
-    // Buffer for reading data
-    Byte[] bytes = new Byte[256];
-    String data = null;
-
-    // Enter the listening loop.
     while (true)
     {
-        Console.Write("Waiting for a connection... ");
-
-        // Perform a blocking call to accept requests.
-        // You could also use server.AcceptSocket() here.
-        using TcpClient client = server.AcceptTcpClient();
-        Console.WriteLine("Connected!");
-
-        data = null;
-
-        // Get a stream object for reading and writing
-        NetworkStream stream = client.GetStream();
-
-        int i;
-
-        // Loop to receive all the data sent by the client.
-        while ((i = stream.Read(bytes, 0, bytes.Length)) != 0)
-        {
-            // Translate data bytes to a ASCII string.
-            data = System.Text.Encoding.ASCII.GetString(bytes, 0, i);
-            Console.WriteLine("Received: {0}", data);
-
-            // Process the data sent by the client.
-            data = data.ToUpper();
-
-            byte[] msg = System.Text.Encoding.ASCII.GetBytes(data);
-
-            // Send back a response.
-            stream.Write(msg, 0, msg.Length);
-            Console.WriteLine("Sent: {0}", data);
-        }
+        Console.WriteLine("Listener: Waiting for a connection... ");
+        TcpClient client = await server.AcceptTcpClientAsync();
+        _ = Task.Run(() => ProcessClient_4(client));
     }
 }
-catch (SocketException e)
+static async Task ProcessClient_4(TcpClient client)
 {
-    Console.WriteLine("SocketException: {0}", e);
+    // v4: v3 code modified to send image and its metadata. woking correctly
+    Console.WriteLine("Connected accepted.");
+    using NetworkStream channel = client.GetStream();
+
+    using BinaryReader channelReader = new(channel);
+    string metadata = channelReader.ReadString();
+    Metadata metadataObj = JsonSerializer.Deserialize<Metadata>(metadata) ?? throw new Exception();
+    using FileStream imageFile = new($"{Constants.ServerOutputFolder}/{metadataObj.filename}", FileMode.Create);
+    using BinaryWriter fileWriter = new(imageFile);
+    Console.WriteLine(metadata);
+    for (int i = 0; i < metadataObj.filesize; i++)
+    {
+        byte byteRead = channelReader.ReadByte();
+        fileWriter.Write(byteRead);
+    }
+    client.Close();
+    await Task.Delay(100);
 }
-finally
+static async Task ProcessClient_3(TcpClient client)
 {
-    server.Stop();
+    // v3 : use binary writer to write image to stream. working correctly.
+    using NetworkStream channel = client.GetStream();
+
+    using FileStream imageFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
+    using BinaryWriter fileWriter = new(imageFile);
+    using BinaryReader channelReader = new(channel);
+    long length = channelReader.ReadInt64();
+    for (int i = 0; i < length; i++)
+    {
+        byte byteRead = channelReader.ReadByte();
+        fileWriter.Write(byteRead);
+    }
+    client.Close();
+    await Task.Delay(100);
+}
+static async Task ProcessClient2_2(TcpClient client)
+{
+    // v2.2 hard coded. working correctly
+    NetworkStream stream = client.GetStream();
+
+    FileStream inputFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
+
+    await stream.CopyToAsync(inputFile);
+    client.Close();
+}
+static async Task ProcessClient2_1(TcpClient client)
+{
+    // v2.1 hard coded. working correctly.
+    NetworkStream stream = client.GetStream();
+
+    FileStream inputFile = new($"{Constants.ServerOutputFolder}/IMG-20250318-WA0001.jpg", FileMode.Create);
+
+    int filesize = 90674;
+    byte[] bytes = new byte[filesize];
+
+    int readBytes = stream.Read(bytes, 0, filesize);
+    await inputFile.WriteAsync(bytes, 0, filesize);
+    client.Close();
+}
+static async Task ProcessClient_1(TcpClient client)
+{
+    // v1. not working
+    NetworkStream stream = client.GetStream();
+
+    StreamReader streamReader = new(stream, Encoding.UTF8);
+    string? metadataString = await streamReader.ReadLineAsync();
+    ArgumentException.ThrowIfNullOrWhiteSpace(metadataString);
+    var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metadataString);
+    ArgumentNullException.ThrowIfNull(metadata);
+    int filesize = int.Parse(metadata["filesize"]);
+    Console.WriteLine(metadata["filename"]);
+    Console.WriteLine(filesize);
+
+    FileStream inputFile = new($"{Constants.ServerOutputFolder}/{metadata["filename"]}", FileMode.Create);
+
+    byte[] bytes = new byte[filesize];
+
+    int readBytes = stream.Read(bytes, 0, filesize);
+    await inputFile.WriteAsync(bytes, 0, filesize);
+    client.Close();
 }
 
-Console.WriteLine("\nHit enter to continue...");
-Console.Read();
+record Metadata(long filesize, string filename);

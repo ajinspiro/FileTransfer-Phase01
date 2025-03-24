@@ -44,7 +44,7 @@ static async Task Run_3()
         byte readByte = fileReader.ReadByte();
         channelWriter.Write(readByte);
     }
-    await Task.Delay(1000);
+    await Task.CompletedTask;
 }
 static async Task Run_2_1()
 {
